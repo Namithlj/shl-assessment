@@ -1,4 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+import logging
 import os
 import json
 import numpy as np
@@ -10,6 +12,10 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 DATA_DIR = os.path.normpath(DATA_DIR)
 
 app = Flask(__name__)
+CORS(app)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def load_resources(model_name="all-MiniLM-L6-v2"):
@@ -48,10 +54,15 @@ def recommend():
             meta, nn, embs, model = load_resources()
             app.config["RESOURCES"] = (meta, nn, embs, model)
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            logger.exception("Failed to load resources")
+            return jsonify({"error": "loading resources failed", "detail": str(e)}), 500
 
-    vec = model.encode([q])[0]
-    dists, ids = nn.kneighbors([vec], n_neighbors=min(max(10, k*2), embs.shape[0]))
+    try:
+        vec = model.encode([q])[0]
+        dists, ids = nn.kneighbors([vec], n_neighbors=min(max(10, k*2), embs.shape[0]))
+    except Exception as e:
+        logger.exception("Vector search failed")
+        return jsonify({"error": "vector search failed", "detail": str(e)}), 500
     candidates = []
     for dist, i in zip(dists[0], ids[0]):
         candidates.append({"id": int(i), "score": float(1 - float(dist))})
@@ -67,6 +78,36 @@ def recommend():
         })
 
     return jsonify({"query": q, "recommendations": recs}), 200
+
+
+@app.route('/recommend', methods=['GET'])
+def recommend_get():
+    # Debug GET endpoint to help identify 404s from simple browser checks.
+    q = request.args.get('q') or request.args.get('query')
+    if not q:
+        return jsonify({"error": "provide ?q=<text> to test GET recommendation"}), 400
+    try:
+        meta, nn, embs, model = app.config.get("RESOURCES")
+    except Exception:
+        try:
+            meta, nn, embs, model = load_resources()
+            app.config["RESOURCES"] = (meta, nn, embs, model)
+        except Exception as e:
+            logger.exception("Failed to load resources for GET recommend")
+            return jsonify({"error": "loading resources failed", "detail": str(e)}), 500
+
+    try:
+        vec = model.encode([q])[0]
+        dists, ids = nn.kneighbors([vec], n_neighbors=min(10, embs.shape[0]))
+    except Exception as e:
+        logger.exception("Vector search failed (GET)")
+        return jsonify({"error": "vector search failed", "detail": str(e)}), 500
+
+    out = []
+    for dist, i in zip(dists[0], ids[0]):
+        m = meta[int(i)]
+        out.append({"title": m.get('title'), "url": m.get('url'), "score": float(1 - float(dist))})
+    return jsonify({"query": q, "candidates": out}), 200
 
 
 if __name__ == "__main__":
