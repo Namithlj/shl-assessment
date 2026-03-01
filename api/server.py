@@ -4,7 +4,11 @@ import logging
 import os
 import json
 import numpy as np
-from sentence_transformers import SentenceTransformer
+try:
+    # optional import; heavy dependency avoided in prod requirements
+    from sentence_transformers import SentenceTransformer
+except Exception:
+    SentenceTransformer = None
 import joblib
 from .rerank import rerank
 
@@ -29,7 +33,15 @@ def load_resources(model_name="all-MiniLM-L6-v2"):
         meta = json.load(f)
     nn = joblib.load(nn_path)
     embs = np.load(emb_path)
-    model = SentenceTransformer(model_name)
+    model = None
+    if SentenceTransformer is not None:
+        try:
+            model = SentenceTransformer(model_name)
+        except Exception:
+            model = None
+    else:
+        logger = logging.getLogger(__name__)
+        logger.warning("SentenceTransformer not installed; runtime encoding disabled")
     return meta, nn, embs, model
 
 
@@ -58,7 +70,24 @@ def recommend():
             return jsonify({"error": "loading resources failed", "detail": str(e)}), 500
 
     try:
-        vec = model.encode([q])[0]
+        if model is not None:
+            vec = model.encode([q])[0]
+        else:
+            # fall back to OpenAI embeddings if available
+            openai_key = os.environ.get("OPENAI_API_KEY")
+            if openai_key:
+                import requests
+                resp = requests.post(
+                    "https://api.openai.com/v1/embeddings",
+                    headers={"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"},
+                    json={"input": q, "model": "text-embedding-3-small"},
+                    timeout=10,
+                )
+                if resp.status_code != 200:
+                    return jsonify({"error": "embedding failed", "detail": resp.text}), 502
+                vec = resp.json()["data"][0]["embedding"]
+            else:
+                return jsonify({"error": "encoding unavailable", "detail": "server not configured with sentence-transformers and OPENAI_API_KEY is missing"}), 503
         dists, ids = nn.kneighbors([vec], n_neighbors=min(max(10, k*2), embs.shape[0]))
     except Exception as e:
         logger.exception("Vector search failed")
@@ -97,8 +126,24 @@ def recommend_get():
             return jsonify({"error": "loading resources failed", "detail": str(e)}), 500
 
     try:
-        vec = model.encode([q])[0]
-        dists, ids = nn.kneighbors([vec], n_neighbors=min(10, embs.shape[0]))
+            if model is not None:
+                vec = model.encode([q])[0]
+            else:
+                openai_key = os.environ.get("OPENAI_API_KEY")
+                if openai_key:
+                    import requests
+                    resp = requests.post(
+                        "https://api.openai.com/v1/embeddings",
+                        headers={"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"},
+                        json={"input": q, "model": "text-embedding-3-small"},
+                        timeout=10,
+                    )
+                    if resp.status_code != 200:
+                        return jsonify({"error": "embedding failed", "detail": resp.text}), 502
+                    vec = resp.json()["data"][0]["embedding"]
+                else:
+                    return jsonify({"error": "encoding unavailable (GET)", "detail": "server not configured with sentence-transformers and OPENAI_API_KEY is missing"}), 503
+            dists, ids = nn.kneighbors([vec], n_neighbors=min(10, embs.shape[0]))
     except Exception as e:
         logger.exception("Vector search failed (GET)")
         return jsonify({"error": "vector search failed", "detail": str(e)}), 500

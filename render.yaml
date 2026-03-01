@@ -3,7 +3,9 @@ services:
     name: shl-assessment
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    # use a minimal requirements file for the runtime to avoid installing
+    # heavy ML packages (torch/sentence-transformers) on low-memory hosts
+    buildCommand: pip install -r requirements.prod.txt
     # bind to a fixed, numeric port and declare it below so Render's scanner
     # can detect the open port and avoid substituting '$PORT' as a literal
     startCommand: gunicorn api.server:app --bind 0.0.0.0:8181 --workers 2
