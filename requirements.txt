@@ -1,0 +1,14 @@
+requests
+beautifulsoup4
+tqdm
+pandas
+lxml
+sentence-transformers
+flask
+joblib
+scikit-learn
+flask
+joblib
+gunicorn
+
+
