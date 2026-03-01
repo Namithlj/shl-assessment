@@ -105,11 +105,18 @@ def recommend_get():
 
     out = []
     for dist, i in zip(dists[0], ids[0]):
-        # metadata keys are strings in metadata.json; use str(i) safely
-        m = meta.get(str(int(i))) if isinstance(meta, dict) else None
-        if m is None:
-            # try fallback lookup; skip if still missing
-            m = meta.get(int(i)) if isinstance(meta, dict) else None
+        # metadata can be a dict (string keys) or a list; handle both safely
+        m = None
+        try:
+            if isinstance(meta, dict):
+                # try string key first, then int key
+                m = meta.get(str(int(i))) or meta.get(int(i))
+            elif isinstance(meta, list):
+                idx = int(i)
+                if 0 <= idx < len(meta):
+                    m = meta[idx]
+        except Exception:
+            m = None
         if not m:
             logger.warning('Missing metadata for id %s; skipping', i)
             continue

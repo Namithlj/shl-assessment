@@ -14,9 +14,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # copy requirements first for better caching
 COPY requirements.txt /app/requirements.txt
 RUN python -m pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch || true && \
     pip install --no-cache-dir -r /app/requirements.txt
 
-# copy project
+# copy frontend separately so it lives at /app/frontend in the image
+COPY frontend /app/frontend
+# copy the rest of the project
 COPY . /app
 
 # expose port used by Flask / Gunicorn

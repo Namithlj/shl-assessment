@@ -4,7 +4,11 @@ services:
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn api.server:app --bind 0.0.0.0:$PORT --workers 2
+    # bind to a fixed, numeric port and declare it below so Render's scanner
+    # can detect the open port and avoid substituting '$PORT' as a literal
+    startCommand: gunicorn api.server:app --bind 0.0.0.0:8181 --workers 2
+    ports:
+      - 8181
     envVars:
       - key: HF_TOKEN
         # Set this value in the Render dashboard Secrets/Environment

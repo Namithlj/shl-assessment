@@ -30,22 +30,32 @@ def build_embeddings(products, model_name="all-MiniLM-L6-v2", out_dir="data"):
         texts.append(" | ".join([t for t in parts if t]))
 
     embs = model.encode(texts, show_progress_bar=True, convert_to_numpy=True)
-    os.makedirs(out_dir, exist_ok=True)
-    emb_path = os.path.join(out_dir, "embeddings.npy")
+    # Allow `out_dir` to be either a directory or a file path (e.g. data/embeddings.npy)
+    out_path = out_dir
+    # if out_path has an extension, treat it as the embeddings file path
+    if os.path.splitext(out_path)[1]:
+        emb_path = out_path
+        out_dir_actual = os.path.dirname(out_path) or "."
+    else:
+        out_dir_actual = out_path
+        emb_path = os.path.join(out_dir_actual, "embeddings.npy")
+
+    os.makedirs(out_dir_actual, exist_ok=True)
     np.save(emb_path, embs)
 
     # Build brute-force NearestNeighbors with cosine distance
     nn = NearestNeighbors(n_neighbors=10, metric="cosine", algorithm="brute")
     nn.fit(embs)
-    idx_path = os.path.join(out_dir, "nn_model.joblib")
+    idx_path = os.path.join(out_dir_actual, "nn_model.joblib")
     joblib.dump(nn, idx_path)
 
     # Save metadata
     meta = {i: {"title": p.get("title"), "url": p.get("url"), "duration_minutes": p.get("duration_minutes"), "category": p.get("category") } for i, p in enumerate(products)}
-    with open(os.path.join(out_dir, "metadata.json"), "w", encoding="utf-8") as f:
+    meta_path = os.path.join(out_dir_actual, "metadata.json")
+    with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
-    print(f"Saved embeddings to {emb_path}, NearestNeighbors model to {idx_path}, metadata to {out_dir}/metadata.json")
+    print(f"Saved embeddings to {emb_path}, NearestNeighbors model to {idx_path}, metadata to {meta_path}")
     return emb_path, idx_path
 
 
