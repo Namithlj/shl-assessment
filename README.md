@@ -1,8 +1,18 @@
-# SHL Assessment Catalog Crawler
+# SHL Assessment Recommendation System
 
-This small project contains a crawler to download the SHL product catalogue pages and extract individual assessment pages (title, URL, category, duration, test type).
+This project crawls the SHL product catalog, builds a retrieval index over **Individual Test Solutions**, and serves a web API + frontend that recommends **5–10** relevant assessments for a natural-language query, JD text, or JD URL. It also enforces **balanced recommendations** (K vs P) when a query spans both technical and behavioral domains.
 
-Quick start (Windows PowerShell):
+## What’s Included
+- **Crawler** that scrapes the SHL product catalog and extracts title, URL, category, duration, test type.
+- **Normalization pipeline** to label Individual vs Pre-packaged solutions and add `test_type`.
+- **Embedding + retrieval** (SentenceTransformers + NearestNeighbors).
+- **API** with `/health` and `/recommend` endpoints.
+- **Frontend** (served from `/`) for quick testing.
+- **Evaluation scripts/data** (train labels and submission CSV format support).
+
+---
+
+## Quick Start (Windows PowerShell)
 
 1. Create a virtualenv and install deps:
 
@@ -12,34 +22,112 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-2. Run the crawler (saves to `data/products.json` and `data/products.csv`):
+2. Crawl the SHL catalog (saves raw data):
 
 ```powershell
 python crawler\scrape_shl.py --out data/products.json
 ```
 
-Run the API + Frontend (local):
+3. Normalize the catalog (filters Individual Test Solutions and adds test type):
 
 ```powershell
-# activate venv if needed
-c:/python313/python.exe -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-
-# start the Flask API (serves frontend at /)
-python -m api.server
-
-# open http://127.0.0.1:8181/ in your browser to use the demo frontend
+python crawler\normalize_products.py --in data/products.json --out data/normalized_products
 ```
 
-Notes:
-- The script is polite (rate-limited). If you need to crawl faster, adjust `--delay`.
-- You must ensure crawling the target site complies with their robots.txt and your legal/organizational rules.
+4. Build embeddings + retrieval index:
 
-Deploying to Render / Heroku
- - Ensure `requirements.txt` includes `gunicorn` (already present).
- - Add the project `Procfile` (already added) which tells the host to run:
-	 `gunicorn api.server:app --bind 0.0.0.0:$PORT`.
- - On Render or Heroku create a new Web Service, connect the GitHub repo, and deploy. Check the service logs if you see a "Not Found" page — it usually means the deploy target URL is wrong or the service failed to start.
+```powershell
+python crawler\embed_and_index.py --in data/normalized_products.json --out data
+```
 
-If you want a Docker deployment instead I can add a `Dockerfile` and a `render.yaml` for a full Render setup.
+5. Run API + Frontend (local):
+
+```powershell
+python -m api.server
+# open http://127.0.0.1:8181/ in your browser
+```
+
+---
+
+## API
+
+**Live demo:** https://shl-assessment-cbme.onrender.com
+
+### Health Check
+`GET /health`
+
+**Response:**
+```json
+{ "status": "ok" }
+```
+
+### Recommendation
+`POST /recommend`
+
+**Request:**
+```json
+{ "query": "Java developer with teamwork skills", "k": 5 }
+```
+
+**Response:**
+```json
+{
+  "query": "Java developer with teamwork skills",
+  "recommendations": [
+    { "assessment_name": "...", "url": "...", "score": 0.123 }
+  ]
+}
+```
+
+---
+
+## Balanced Recommendations (Requirement)
+
+When a query spans **technical + behavioral** domains, the system enforces a **balanced mix** of:
+- **K (Knowledge & Skills)** assessments
+- **P (Personality & Behavior)** assessments
+
+This logic is implemented in `api/rerank.py` and uses `test_type` from `data/normalized_products.json`.
+
+---
+
+## Evaluation & CSV Submission
+
+Train labels are located at:
+```
+data/train_labels.csv
+```
+
+Submission format (2 columns: `Query`, `Assessment_url`):
+
+```
+Query,Assessment_url
+Query 1,Recommendation 1 (URL)
+Query 1,Recommendation 2 (URL)
+...
+Query 2,Recommendation 1 (URL)
+```
+
+---
+
+## Deployment
+
+### Render (recommended)
+- Runtime installs **lightweight** deps from `requirements.prod.txt`
+- `render.yaml` uses:
+```
+gunicorn api.server:app --bind 0.0.0.0:$PORT
+```
+
+### Docker (optional)
+```bash
+docker build -t shl-assessment .
+docker run -e PORT=8181 -p 8181:8181 shl-assessment
+```
+
+---
+
+## Notes
+- Crawler is rate‑limited by default. Use `--delay` to tune.
+- Ensure crawling complies with SHL’s robots.txt and usage policies.
+- For production, set `HF_TOKEN` to avoid HuggingFace rate limits.
