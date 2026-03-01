@@ -6,11 +6,8 @@ services:
     # use a minimal requirements file for the runtime to avoid installing
     # heavy ML packages (torch/sentence-transformers) on low-memory hosts
     buildCommand: pip install -r requirements.prod.txt
-    # bind to a fixed, numeric port and declare it below so Render's scanner
-    # can detect the open port and avoid substituting '$PORT' as a literal
-    startCommand: gunicorn api.server:app --bind 0.0.0.0:8181 --workers 2
-    ports:
-      - 8181
+    # bind to Render's assigned port so health checks pass reliably
+    startCommand: gunicorn api.server:app --bind 0.0.0.0:$PORT
     envVars:
       - key: HF_TOKEN
         # Set this value in the Render dashboard Secrets/Environment

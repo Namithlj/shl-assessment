@@ -7,6 +7,12 @@ TECH_KEYWORDS = [
     "selenium", "automation", "excel", "tableau", "r", "spq", "opq", "c++",
 ]
 
+BEHAVIORAL_KEYWORDS = [
+    "collaborate", "collaboration", "team", "teamwork", "stakeholder",
+    "stakeholders", "communication", "interpersonal", "behavior", "behaviour",
+    "personality", "leadership", "motivation", "empathy", "conflict",
+]
+
 
 def extract_keywords(text):
     text = (text or "").lower()
@@ -26,33 +32,71 @@ def score_by_keyword(match_keywords, meta_item):
     return score
 
 
-def balance_results(candidates, meta, desired_k=5):
-    # candidates: list of dicts {'id':int, 'score':float}
-    # meta: metadata dict
-    # Ensure a simple balance: prefer mix of items whose category contains 'personality' / 'behaviour' vs 'knowledge' / 'skills'
-    behavioural = []
-    technical = []
-    other = []
+def _get_meta(meta, idx):
+    if isinstance(meta, dict):
+        return meta.get(str(int(idx))) or meta.get(int(idx))
+    if isinstance(meta, list):
+        i = int(idx)
+        if 0 <= i < len(meta):
+            return meta[i]
+    return None
+
+
+def _is_individual(meta_item):
+    if not meta_item:
+        return False
+    if "is_individual" not in meta_item:
+        return True
+    return bool(meta_item.get("is_individual"))
+
+
+def _is_mixed_domain(query_text):
+    text = (query_text or "").lower()
+    has_tech = any(k in text for k in TECH_KEYWORDS)
+    has_beh = any(k in text for k in BEHAVIORAL_KEYWORDS)
+    return has_tech and has_beh
+
+
+def _bucket_by_type(candidates, meta):
+    buckets = {"K": [], "P": [], "other": []}
     for c in candidates:
-        m = meta.get(str(c['id'])) or meta.get(c['id'])
-        cat = (m.get('category') or "").lower()
-        title = (m.get('title') or "").lower()
-        if 'person' in cat or 'behaviour' in title or 'interpersonal' in title or 'personality' in title:
-            behavioural.append(c)
-        elif any(tk in title for tk in TECH_KEYWORDS) or any(tk in cat for tk in TECH_KEYWORDS):
-            technical.append(c)
+        m = _get_meta(meta, c["id"])
+        if not _is_individual(m):
+            continue
+        test_type = (m.get("test_type") or "").strip().upper()
+        if test_type == "K":
+            buckets["K"].append(c)
+        elif test_type == "P":
+            buckets["P"].append(c)
         else:
-            other.append(c)
+            buckets["other"].append(c)
+    return buckets
+
+
+def balance_results(candidates, meta, desired_k=5, require_balance=False):
+    # candidates: list of dicts {'id':int, 'score':float}
+    # meta: metadata dict or list
+    buckets = _bucket_by_type(candidates, meta)
+    tech = buckets["K"]
+    beh = buckets["P"]
+    other = buckets["other"]
 
     results = []
-    # alternate technical and behavioural when possible
-    while len(results) < desired_k and (technical or behavioural or other):
-        if technical:
-            results.append(technical.pop(0))
+    if require_balance:
+        # ensure at least one K and one P when available
+        if tech:
+            results.append(tech.pop(0))
+        if beh and len(results) < desired_k:
+            results.append(beh.pop(0))
+
+    # then alternate K/P with remainder
+    while len(results) < desired_k and (tech or beh or other):
+        if tech:
+            results.append(tech.pop(0))
         if len(results) >= desired_k:
             break
-        if behavioural:
-            results.append(behavioural.pop(0))
+        if beh:
+            results.append(beh.pop(0))
         if len(results) >= desired_k:
             break
         if other:
@@ -71,10 +115,12 @@ def rerank(query_text, candidates, meta):
     adjusted = []
     for c in candidates:
         base = c.get('score', 0.0)
-        m = meta.get(str(c['id'])) or meta.get(c['id'])
+        m = _get_meta(meta, c['id'])
+        if not _is_individual(m):
+            continue
         bonus = score_by_keyword(match_keys, m) * 0.1
-        adjusted.append({'id': c['id'], 'score': base + bonus, 'title': m.get('title'), 'url': m.get('url')})
+        adjusted.append({'id': c['id'], 'score': base + bonus, 'title': m.get('title'), 'url': m.get('url'), 'test_type': m.get('test_type')})
 
     adjusted = sorted(adjusted, key=lambda x: x['score'], reverse=True)
-    balanced = balance_results(adjusted, meta, desired_k=len(adjusted))
+    balanced = balance_results(adjusted, meta, desired_k=len(adjusted), require_balance=_is_mixed_domain(query_text))
     return balanced

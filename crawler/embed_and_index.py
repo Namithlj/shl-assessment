@@ -50,7 +50,17 @@ def build_embeddings(products, model_name="all-MiniLM-L6-v2", out_dir="data"):
     joblib.dump(nn, idx_path)
 
     # Save metadata
-    meta = {i: {"title": p.get("title"), "url": p.get("url"), "duration_minutes": p.get("duration_minutes"), "category": p.get("category") } for i, p in enumerate(products)}
+    meta = {
+        i: {
+            "title": p.get("title"),
+            "url": p.get("url"),
+            "duration_minutes": p.get("duration_minutes"),
+            "category": p.get("category"),
+            "test_type": p.get("test_type"),
+            "is_individual": p.get("is_individual"),
+        }
+        for i, p in enumerate(products)
+    }
     meta_path = os.path.join(out_dir_actual, "metadata.json")
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)

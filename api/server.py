@@ -24,15 +24,23 @@ logger = logging.getLogger(__name__)
 
 def load_resources(model_name="all-MiniLM-L6-v2"):
     meta_path = os.path.join(DATA_DIR, "metadata.json")
+    normalized_path = os.path.join(DATA_DIR, "normalized_products.json")
     nn_path = os.path.join(DATA_DIR, "nn_model.joblib")
     emb_path = os.path.join(DATA_DIR, "embeddings.npy")
-    if not os.path.exists(meta_path) or not os.path.exists(nn_path) or not os.path.exists(emb_path):
-        raise RuntimeError("Required data (metadata/nn_model/embeddings) not found in data/")
+    if not os.path.exists(nn_path) or not os.path.exists(emb_path):
+        raise RuntimeError("Required data (nn_model/embeddings) not found in data/")
+    if not os.path.exists(meta_path) and not os.path.exists(normalized_path):
+        raise RuntimeError("Required metadata (normalized_products.json or metadata.json) not found in data/")
 
-    with open(meta_path, "r", encoding="utf-8") as f:
-        meta = json.load(f)
-    nn = joblib.load(nn_path)
-    embs = np.load(emb_path)
+    if os.path.exists(normalized_path):
+        with open(normalized_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+    else:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+    # Use memory mapping to reduce peak RAM on low-memory hosts
+    nn = joblib.load(nn_path, mmap_mode="r")
+    embs = np.load(emb_path, mmap_mode="r")
     model = None
     if SentenceTransformer is not None:
         try:
@@ -169,15 +177,6 @@ def recommend_get():
     return jsonify({"query": q, "candidates": out}), 200
 
 
-if __name__ == "__main__":
-    # preload resources
-    try:
-        app.config["RESOURCES"] = load_resources()
-    except Exception as e:
-        print("Warning: resources not loaded:", e)
-    app.run(host="127.0.0.1", port=8181, debug=True)
-
-
 @app.route("/", methods=["GET"])
 def index():
     # serve frontend index if present
@@ -197,3 +196,12 @@ def frontend_files(filename):
         return send_from_directory(frontend_dir, filename)
     # If not a static file, return 404 so API routes can handle other paths
     return jsonify({"error": "not found"}), 404
+
+
+if __name__ == "__main__":
+    # preload resources
+    try:
+        app.config["RESOURCES"] = load_resources()
+    except Exception as e:
+        print("Warning: resources not loaded:", e)
+    app.run(host="127.0.0.1", port=8181, debug=True)
