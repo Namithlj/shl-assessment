@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: shl-assessment
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn api.server:app --bind 0.0.0.0:$PORT --workers 2
+    envVars:
+      - key: HF_TOKEN
+        # Set this value in the Render dashboard Secrets/Environment
+        value: ""
+    healthCheckPath: /
