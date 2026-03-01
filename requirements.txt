@@ -10,5 +10,6 @@ scikit-learn
 flask
 joblib
 gunicorn
+flask-cors
 
 

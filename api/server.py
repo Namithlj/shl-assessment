@@ -105,7 +105,14 @@ def recommend_get():
 
     out = []
     for dist, i in zip(dists[0], ids[0]):
-        m = meta[int(i)]
+        # metadata keys are strings in metadata.json; use str(i) safely
+        m = meta.get(str(int(i))) if isinstance(meta, dict) else None
+        if m is None:
+            # try fallback lookup; skip if still missing
+            m = meta.get(int(i)) if isinstance(meta, dict) else None
+        if not m:
+            logger.warning('Missing metadata for id %s; skipping', i)
+            continue
         out.append({"title": m.get('title'), "url": m.get('url'), "score": float(1 - float(dist))})
     return jsonify({"query": q, "candidates": out}), 200
 
@@ -127,3 +134,14 @@ def index():
     if os.path.exists(index_path):
         return send_from_directory(frontend_dir, "index.html")
     return jsonify({"message": "SHL Recommender API"}), 200
+
+
+@app.route('/<path:filename>', methods=['GET'])
+def frontend_files(filename):
+    # Serve other frontend static assets (css/js) if present in frontend/ directory
+    frontend_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+    file_path = os.path.join(frontend_dir, filename)
+    if os.path.exists(file_path):
+        return send_from_directory(frontend_dir, filename)
+    # If not a static file, return 404 so API routes can handle other paths
+    return jsonify({"error": "not found"}), 404
