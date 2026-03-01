@@ -35,3 +35,11 @@ python -m api.server
 Notes:
 - The script is polite (rate-limited). If you need to crawl faster, adjust `--delay`.
 - You must ensure crawling the target site complies with their robots.txt and your legal/organizational rules.
+
+Deploying to Render / Heroku
+ - Ensure `requirements.txt` includes `gunicorn` (already present).
+ - Add the project `Procfile` (already added) which tells the host to run:
+	 `gunicorn api.server:app --bind 0.0.0.0:$PORT`.
+ - On Render or Heroku create a new Web Service, connect the GitHub repo, and deploy. Check the service logs if you see a "Not Found" page — it usually means the deploy target URL is wrong or the service failed to start.
+
+If you want a Docker deployment instead I can add a `Dockerfile` and a `render.yaml` for a full Render setup.
