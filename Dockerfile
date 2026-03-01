@@ -25,5 +25,5 @@ COPY . /app
 # expose port used by Flask / Gunicorn
 EXPOSE 8181
 
-# Use Gunicorn for production; Render will supply $PORT
-CMD ["gunicorn", "api.server:app", "--bind", "0.0.0.0:$PORT", "--workers", "2"]
+# Use Gunicorn for production; bind to numeric port 8181 (matches render.yaml)
+CMD ["gunicorn", "api.server:app", "--bind", "0.0.0.0:8181", "--workers", "2"]
